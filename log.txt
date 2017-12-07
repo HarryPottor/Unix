@@ -115,3 +115,112 @@ vfork()
 	exit 则可能会执行两方面内容：冲洗I/O流，关闭标准I/O流,清空相关缓冲区。
 *** 所以 如果exit执行了两方面内容，那当时存在缓冲区的数据是不存在的。
 
+exit() 进程终止
+不管进程如何终止，都会执行内核中的同一段代码，为进程关闭所有打开描述符，
+	释放它所使用的存储器等
+对于exit(), _exit(), _Exit() 将退出状态作为参数传递给函数。
+对于异常终止，内核产生一个指示其异常终止原因的终止状态。
+
+退出状态和终止状态：
+如果在最后调用_exit()，内核将退出状态转换成中止状态；
+如果子进程正常终止，则父进程可以获得子进程的退出状态。
+
+如果父进程先退出，子进程的父进程变为init进程的；
+僵死进程：一个已经终止，但是其父进程尚未对其进程善后处理。ps为Z
+除非父进程 等待 取得子进程的终止状态，不然这些子进程终止后会变为僵死进程。
+
+init进程的子进程(可能是自己产生的，可能是收养的)结束后会调用一个wait
+函数获取其终止状态。因此 init的子进程不会是僵尸进程。
+
+当进程终止时， 内核  向其  父进程  发送 SIGCHILD 信号。
+
+pid_t wait(int *status);
+pid_t waitpid(pid_t pid, int *status, int options);
+调用wait，waitpid时：
+1 若当前进程有子进程则阻塞，
+2 如果 一个子进程已终止，正等待 当前进程 获取它的终止状态，
+	当前进程 取得其终止状态后立即返回。
+3 如果 当前进程 没有任何子进程，则立即出错返回。
+4 waitpid 如果指定的进程或进程组不存在，或者参数pid指定的进程
+	不是调用进程的子进程，则出错
+参数：
+1 pid
+pid == -1 等待任意进程
+pid > 0 等待进程ID 等于 pid 的进程
+pid == 0 等待 组ID == 调用进程组ID 的任意进程
+pid < -1 等待 组ID == pid绝对值 的任意子进程
+2 status
+WIF EXITED 正常终止的子进程为真， 
+			W EXIT STATUS 获取exit,_exit的参数
+WIF SIGNALED 异常终止子进程为真
+			WT ERM SIG 获取终止信号的编号
+			W CORE DUMP 若产生了终止进程的core文件，则为真
+WIF STOPPED 暂停子进程为真
+			W STOP SIG 获取使进程暂停的信号编号
+WIF CONTINUED 暂停子进程 继续执行 则为真
+
+3 options
+WNOWAIT 它使 系统将终止状态已由waitpid返回的进程 保持在 等待状态，
+		这样它可被再次等待。
+WCONTINUED 若实现支持作业控制，那么由pid指定的任意子进程在停止后已经继续，
+		但其状态尚未报告，则返回其状态。
+WNOHANG	若由pid指定的子进程并不是立即可用的，则waitpid不阻塞，此时返回值为0
+WUNTRACED 若某实现支持作业控制，而由pid指定的任一子进程已处于停止状态，
+		并且其状态自停止以来还未汇报过，则返回其状态。
+
+*(SUS) int waitid(idtype_t idtype, id_t id, siginfo_t *infop, int options);
+idtype : P_PID P_PGID P_ALL
+options:  	WCONTINUED  等一进程，以前被停止，此后又已继续，但未报告状态(*)
+			WEXITED 	等 已退出的进程(*)
+			WNOHANG 	如果没有可用的子进程退出状态，立即返回而非阻塞
+			WNOWAIT		不破坏子进程退出状态，该退出状态可由后续wait waitid waitpid继续取得
+			WSTOPPED	等一进程，它已停止，但状态尚未报告(*)
+			(*)三个之一必须在options中指定
+infop:	siginfo 结构指针，信号数据
+
+wait3(int *status, int options, struct rusage* rusage);
+wait4(pid_t pid, int *status, int options, struct rusage* rusage);
+rusage 资源统计：用户cpu时间总量，系统cpu时间总量，缺页次数，接收到信号次数等
+
+条件竞争：
+如果一个进程要等待父进程终止，则可以使用循环:
+while(getppid() != 1)
+{
+	sleep(1);
+}
+称为 轮询，浪费了CPU时间
+
+函数exec
+fork后，子进程往往要调用一种exec执行另一个程序。该进程执行的程序完全替换为
+新程序，而新程序则从main函数开始，但并没有创建新进程。 
+int execl(const char* pathname, const char *arg0, ...[(char*)0])
+int execle(const char* pathname, const char *arg0, ...[(char*)0, char*const envp[]])
+int execlp(const char* filename, const char *arg0, ...[(char*)0])
+
+int execv(const char* pathname, char * const argv[]);
+int execve(const char* pathname, char * const argv[], char* const envp[]);
+int execvp(const char* filename, char * const argv[]);
+
+int fexecve(int fd, char* const argv[], char *const envp[]);
+
+*如果filename中包含/ 则变为路径名
+*否则就按PATH环境变量，在它所指定的各目录中搜寻可执行文件。
+使用execlp execvp 在路径中找到了一个可执行文件，但是该文件不是由连接编辑器产生的
+机器可执行文件，则认为该文件是个shell
+
+进程中每个打开描述符 都有一个执行时关闭标志，
+	若设置了此标志，则在执行exec时关闭该描述符
+	否则，该描述符仍然打开。
+	除非特地用fcntl设置了该执行时关闭标志，否则默认exec后是打开的
+
+POSIX.1 明确指出 exec 时关闭打开的目录流
+
+
+execlp		execl		execle
+   ↓		  ↓			  ↓
+execvp   →  execv  →  	execve(系统调用)
+						  ↑
+						fexecve
+
+文件->合并参数 ->使用PATH ->使用环境->系统调用
+fexecve -> 使用/proc 把文件描述符参数转换 为路径 ->系统调用
