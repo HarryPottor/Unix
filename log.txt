@@ -224,3 +224,18 @@ execvp   →  execv  →  	execve(系统调用)
 
 文件->合并参数 ->使用PATH ->使用环境->系统调用
 fexecve -> 使用/proc 把文件描述符参数转换 为路径 ->系统调用
+
+//修改实际用户ID 和 有效用户ID
+//修改实际组ID 和 有效组ID
+#include <unistd.h>
+int setuid(uid_t uid);
+int setgid(uid_t gid);
+	--Success: 0;
+	--Faile: -1;
+1 进程具有超级用户特权：
+	实际用户ID，有效用户ID，保存的设置用户ID → uid
+2 进程没有超级用户特权
+	如果uid == 实际用户ID或者保存的设置用户ID，
+		则setuid只将 有效用户 → uid，不更改实际用户ID和保存的设置用户ID
+3 都不是，为errno设为EPERM，并返回-1
+4 _POSIX_SAVED_IDS 为 真，则 关于  保存的设置用户ID 才起作用

@@ -1,0 +1,8 @@
+8
+//修改实际用户ID 和 有效用户ID
+//修改实际组ID 和 有效组ID
+#include <unistd.h>
+int setuid(uid_t uid);
+int setgid(uid_t gid);
+	--Success: 0;
+	--Faile: -1;

@@ -13,7 +13,7 @@ int main(int argc, char const *argv[])
 	}
 	else if (pid == 0)
 	{
-		if (execle("/home/sar/bin/echoall", "echoall", "myargl","MY ARG2",
+		if (execle("/home/sar/bin/shownum", "shownum", "myargl","MY ARG2",
 			(char *)0, env_init) < 0)
 		{
 			err_sys("exevle error");
@@ -31,7 +31,7 @@ int main(int argc, char const *argv[])
 	}
 	else if (pid == 0)
 	{
-		if (execlp("echoall", "echoall", "only 1 arg", (char*)0) < 0)
+		if (execlp("showargv", "echoall", "only 1 arg", (char*)0) < 0)
 		{
 			err_sys("execlp error");
 		}
