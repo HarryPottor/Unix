@@ -239,3 +239,60 @@ int setgid(uid_t gid);
 		则setuid只将 有效用户 → uid，不更改实际用户ID和保存的设置用户ID
 3 都不是，为errno设为EPERM，并返回-1
 4 _POSIX_SAVED_IDS 为 真，则 关于  保存的设置用户ID 才起作用
+
+1、实际用户ID和实际用户组ID：标识我是谁。也就是登录用户的uid和gid，
+	比如我的Linux以simon登录，在Linux运行的所有的命令的实际用户ID都是simon的uid，
+	实际用户组ID都是simon的gid（可以用id命令查看）。
+2、有效用户ID和有效用户组ID：进程用来决定我们对资源的访问权限。
+	一般情况下，有效用户ID等于实际用户ID，有效用户组ID等于实际用户组ID。
+	当设置-用户-ID（SUID）位设置了，则有效用户ID等于文件的所有者的uid，而不是实际用户ID；
+	同样，如果设置了设置-用户组-ID（SGID）位，则有效用户组ID等于文件所有者的gid，而不是实际用户组ID。
+3、 修改文件所有者:
+	chown username program;
+	chgrp username program;
+	设置文件的 SUID 位, GUID位:
+	chmod u+s program
+	chmod g+s program
+
+总结一下：实际用户ID组ID 是系统的登陆账户，一般不会变。
+		  有效的用户ID组ID 需要看文件的SUID，SGID是否被设置：
+		  		是 为文件的所有者，所有组；
+		  		否 为用户的实际ID。
+
+现在加入 保存设置用户ID，SSUID。作为 EUID的副本，在执行exec后能重置原来的EUID。
+***
+超级用户：调用setuid(uid) ，UID，EUID，SSUID都为 新uid。
+一般用户：若UID == uid || SSUID == uid 时 EUID=uid，其余俩不变(为什么等于UID或者SSUID呢？见下分析例子)
+		  否则报错 为errno设为EPERM，并返回-1
+***
+UID 只能超级用户设置，比如login进程块
+exec 函数，当SGID位为真 才会修改EUID的值，否则不会改。
+setuid 函数，无论何时都能设置EUID为UID或SSUID。
+SSUID 是 exec执行 从EUID复制而来的。
+
+**************************************
+举一个例子说明问题,假设这样的一种情况,系统中有两个用户A,B,还有一个由B创建的可执行程序proc,该可执行程序的set-
+user-id位已经进行了设置.
+当A用户执行程序proc时,
+程序的real user ID = A的用户ID,effective user ID = B的用户ID,  saved set-user-ID=B的用户ID.
+假如在该进程结束了对某些限制只能由用户B访问的文件操作后,程序将effective user ID设置回A,也就是说此时:
+程序的real user ID = A的用户ID,effective user ID = A的用户ID,  saved set-user-ID=B的用户ID.
+这个改动之所以能成功,原因在于上面列举出的情况2):	<<<<<<该ID为进程的real user ID>>>>>>>.
+最后,假设由于种种原因进程需要再次切换effective user ID为B,可是因为不能通过API获取进程的saved set-user-ID(该值为B的用户ID),所
+以只能通过两种途径获得(可能还有别的途径):
+a)在设置effective user ID变回A之前保存effective user ID,它的值为B的用户ID.
+b)调用函数getpwnam( "B"),在返回的struct passwd *指针中成员pw_uid存放的就是用户B的ID.
+这样,这个调用setuid(B的用户ID)就会成功,原因也在于上面说的情况2):	<<<<<<<<<该ID与进程的saved set-user-ID相同>>>>>>>>.
+*******************************************
+
+getuid();
+geteuid();
+getresuid(uid_t *uid,uid_t *euid,uid_t *resuid);
+
+交换UID和EUID:
+int setreuid(uid_t ruid, uid_t euid);
+int setregid(gid_t rgid,gid_t egid);
+
+int seteuid(uid_t uid);
+int setegid(gid_t gid);
+	
